@@ -1,0 +1,255 @@
+#include<STC12C5A60S2.h>
+#define uchar unsigned char
+#define uint unsigned int  
+#define  channel  0x01			  //ÉèÖÃADÍ¨µÀÎª P1.1
+//---------------------------------------------------------------------
+#define ADC_POWER   (1<<7)
+#define ADC_SPEEDHH	(0x03<<5)
+#define ADC_START   (1<<3)
+#define PADCH       (1<<5)
+#define ADC_FLAG    (1<<4)
+
+sbit  SDA_R=P2^2;
+sbit  SDA_R_TOP=P2^3;
+sbit  SDA_G=P2^4;				
+sbit  SDA_G_TOP=P2^5; 
+sbit  STCP=P2^6;
+sbit  SHCP=P2^7;
+//---------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------
+//·Å´ó128±¶ºóµÄsinÕûÊý±í£¨128£©	
+code char SIN_TAB[128] = { 0, 6, 12, 18, 24, 30, 36, 42, 48, 54, 59, 65, 70, 75, 80, 85, 89, 94, 98, 102, 
+
+105, 108, 112, 114, 117, 119, 121, 123, 124, 125, 126, 126, 126, 126, 126, 125, 124, 123, 121, 119, 117, 114, 112, 
+
+108, 105, 102, 98, 94, 89, 85, 80, 75, 70, 65, 59, 54, 48, 42, 36, 30, 24, 18, 12, 6, 0, -6, -12, -18, -24, -30, 
+
+-36, -42, -48, -54, -59, -65, -70, -75, -80, -85, -89, -94, -98, -102, -105, -108, -112, -114, -117, -119, -121, 
+
+-123, -124, -125, -126, -126, -126, -126, -126, -125, -124, -123, -121, -119, -117, -114, -112, -108, -105, -102, 
+
+-98, -94, -89, -85, -80, -75, -70, -65, -59, -54, -48, -42, -36, -30, -24, -18, -12, -6 };
+
+//·Å´ó128±¶ºóµÄcosÕûÊý±í£¨128£©
+code char COS_TAB[128] = { 127, 126, 126, 125, 124, 123, 121, 119, 117, 114, 112, 108, 105, 102, 98, 94, 
+
+89, 85, 80, 75, 70, 65, 59, 54, 48, 42, 36, 30, 24, 18, 12, 6, 0, -6, -12, -18, -24, -30, -36, -42, -48, -54, -59, 
+
+-65, -70, -75, -80, -85, -89, -94, -98, -102, -105, -108, -112, -114, -117, -119, -121, -123, -124, -125, -126, -
+
+126, -126, -126, -126, -125, -124, -123, -121, -119, -117, -114, -112, -108, -105, -102, -98, -94, -89, -85, -80, 
+
+-75, -70, -65, -59, -54, -48, -42, -36, -30, -24, -18, -12, -6, 0, 6, 12, 18, 24, 30, 36, 42, 48, 54, 59, 65, 70, 
+
+75, 80, 85, 89, 94, 98, 102, 105, 108, 112, 114, 117, 119, 121, 123, 124, 125, 126, 126 };
+
+//²ÉÑù´æ´¢ÐòÁÐ±í
+code char LIST_TAB[128] = { 0, 64, 32, 96, 16, 80, 48, 112,
+8, 72, 40, 104, 24, 88, 56, 120,
+4, 68, 36, 100, 20, 84, 52, 116,
+12, 76, 44, 108, 28, 92, 60, 124,
+2, 66, 34, 98, 18, 82, 50, 114,
+10, 74, 42, 106, 26, 90, 58, 122,
+6, 70, 38, 102, 22, 86, 54, 118,
+14, 78, 46, 110, 30, 94, 62, 126,
+1, 65, 33, 97, 17, 81, 49, 113,
+9, 73, 41, 105, 25, 89, 57, 121,
+5, 69, 37, 101, 21, 85, 53, 117,
+13, 77, 45, 109, 29, 93, 61, 125,
+3, 67, 35, 99, 19, 83, 51, 115,
+11, 75, 43, 107, 27, 91, 59, 123,
+7, 71, 39, 103, 23, 87, 55, 119,
+15, 79, 47, 111, 31, 95, 63, 127
+};
+
+
+uchar COUNT=0,COUNT1=0,ADC_Count=0,LINE=15,G,T;
+uchar i,j,k,b,p;                 
+int Temp_Real,Temp_Imag,temp;                // ÖÐ¼äÁÙÊ±±äÁ¿  
+uint TEMP1;	
+int xdata Fft_Real[128]; 
+int xdata Fft_Image[128];               // fftµÄÐé²¿ 
+uchar xdata LED_TAB2[64];				//¼ÇÂ¼ Æ¯¸¡Îï ÊÇ·ñÐèÒª Í£¶ÙÒ»ÏÂ
+uchar xdata LED_TAB[64];				//¼ÇÂ¼ºìÉ«Öù×´ 
+uchar xdata LED_TAB1[64];				//¼ÇÂ¼ Æ¯¸¡µã
+
+
+void Delay(uint a)
+{
+	while(a--);
+}
+
+void FFT()
+{    //uchar X;               
+    for( i=1; i<=7; i++)                            /* for(1) */
+    { 
+        b=1;
+        b <<=(i-1);                                       //µúÊ½ÔËËã£¬ÓÃÓÚ¼ÆËã ¸ô¶àÉÙÐÐ¼ÆËã ÀýÈç µÚÒ»¼« 1ºÍ2ÐÐ¼ÆËã£¬£¬µÚ¶þ¼¶ 
+        for( j=0; j<=b-1; j++)                              /* for (2) */
+        { 
+            p=1;
+            p <<= (7-i);            
+            p = p*j;
+            for( k=j; k<128; k=k+2*b)                /* for (3) »ù¶þfft */
+            { 
+                Temp_Real = Fft_Real[k]; Temp_Imag = Fft_Image[k]; temp = Fft_Real[k+b];
+                Fft_Real[k] = Fft_Real[k] + ((Fft_Real[k+b]*COS_TAB[p])>>7) + ((Fft_Image[k+b]*SIN_TAB[p])>>7);
+                Fft_Image[k] = Fft_Image[k] - ((Fft_Real[k+b]*SIN_TAB[p])>>7) + ((Fft_Image[k+b]*COS_TAB[p])>>7);
+                Fft_Real[k+b] = Temp_Real - ((Fft_Real[k+b]*COS_TAB[p])>>7) - ((Fft_Image[k+b]*SIN_TAB[p])>>7);
+                Fft_Image[k+b] = Temp_Imag + ((temp*SIN_TAB[p])>>7) - ((Fft_Image[k+b]*COS_TAB[p])>>7);     
+                // ÒÆÎ».·ÀÖ¹Òç³ö. ½á¹ûÒÑ¾­ÊÇ±¾ÖµµÄ 1/64               
+              Fft_Real[k] >>= 1;             
+                Fft_Image[k] >>= 1; 
+               Fft_Real[k+b]  >>= 1;                 
+                Fft_Image[k+b]  >>= 1; 
+                                                                               
+            }     
+        } 
+    } 
+//	X=((((Fft_Real[1]* Fft_Real[1]))+((Fft_Image[1]*Fft_Image[1])))>>7);
+	 Fft_Real[0]=Fft_Image[0]=0;		  //È¥µôÖ±Á÷·ÖÁ¿
+//	 Fft_Real[63]=Fft_Image[63]=0;
+	for(j=0;j<64;j++)											 
+	{																			  
+		TEMP1=((((Fft_Real[j]* Fft_Real[j]))+((Fft_Image[j]*Fft_Image[j])))>>1);//Çó¹¦ÂÊ
+		if(TEMP1>1)TEMP1--;
+		else TEMP1=0;
+		if(TEMP1>31)TEMP1=31; 
+		if(TEMP1>(LED_TAB[j]))LED_TAB[j]=TEMP1;	
+		if(TEMP1>(LED_TAB1[j]))
+		{   LED_TAB1[j]=TEMP1;
+			LED_TAB2[j]=18;						//Ìá¶ÙËÙ¶È=12
+		}
+	}       
+}
+
+void Init()
+{  
+	
+//-----------------------------------------------------------------------------------
+     P1ASF = 0x02;                 //0000,0010, ½« P1.1 ÖÃ³ÉÄ£Äâ¿Ú    
+     AUXR1 &=0xFB;                 //1111,1011, Áî ADRJ=0
+	 EADC=1;					   //ADÖÐ¶Ï´ò¿ª
+	 ADC_CONTR = ADC_POWER | ADC_SPEEDHH | ADC_START | channel;
+				   //1110 1001   1´ò¿ª A/D £¨ADC_POWER£©×ª»»µçÔ´£»11ËÙ¶ÈÎª70ÖÜÆÚÒ»´Î£»
+	    		   //0ÖÐ¶Ï±êÖ¾ÇåÁã£»1Æô¶¯adc(ADC_START);001ADÍ¨µÀ´ò¿ª£¨ÕâÀïÎªP1.1£©;
+//-----------------------------------------------------------------------------------
+	 P2M0=1;
+	 P0M0=1;
+     TMOD=0X12;					   
+	 TH0=0x30;      //´óÔ¼20KµÄ²ÉÑùÂÊ£¨ÒªÍêÕûÆµ¶ÎÐè40KÒÔÉÏ¡£µ«ÒôÆµÖÐ10kÒÔÏÂ¾Ó¶à£¬¹Ê±¾ÈËÑ¡Ôñ20K²ÉÑù£¬ÃÀ¹ÛÐ©£©                           				  
+	 TL0=0x30;
+	 TH1=0xEE;												   
+	 TL1=0XC0;
+	 ET0=1;					       //¶¨Ê±Æ÷0 ´ò¿ª
+	 TR0=0;					   	   //¹Ø±Õ¶¨Ê±Æ÷
+	 ET1=1;
+	 TR1=1;
+	 PT1=0;
+	 PT0=1;
+     IPH=PADCH;
+	 IP=PADC;						  //ÖÐ¶ÏÓÅÏÈ¼¶
+	 EA=1;							//×ÜÖÐ¶Ï´ò¿ª 
+}
+
+
+ void ADC_Finish() interrupt 5
+ {	   ADC_CONTR &= !ADC_FLAG; 
+ 	   Fft_Real[LIST_TAB[ADC_Count]]=(int)((ADC_RES)<<1)+(ADC_RESL>>1)-256;//-512; //°´LIST_TAB±íÀïµÄË³Ðò£¬½øÐÐ´æ´¢ ²ÉÑùÖµ,,
+	//  ADC_CONTR = ADC_POWER | ADC_SPEEDHH| ADC_START | channel;	// ÎªÁË²É¼¯¸ºµçÑ¹£¬²ÉÓÃ Æ«ÖÃ²É¼¯¡£µçÑ¹Ìá¸ßµ½1/2 vcc£¬£¬ËùÒÔÒª¼õÈ¥256
+	  if(ADC_Count<=127)ADC_Count++;
+	  else {EADC=0;TR0=0;}	  													 
+ }
+
+ void LED_Display() interrupt 3					 //ÖÐ¶ÏÒ»´Î ÏÔÊ¾Ò»ÐÐ¡£¡£¡£
+ {	 	 
+ 	//TH1=0xF3;												 
+//	 TL1=0X00;
+   TH1=0x53;												 
+	 TL1=0X33;						
+		for	(G=0;G<64;G++)						  //ÍùµãÕóÆÁÌî³ä Ò»ÐÐµÄ Êý¾Ý
+		{	
+			if(LED_TAB[G]<=LINE+16)SDA_R_TOP=1;
+			else SDA_R_TOP=0;
+		  	if(LED_TAB[G]<=LINE)SDA_R=1;
+			else SDA_R=0;
+
+			if(LED_TAB1[G]==LINE){SDA_G_TOP=1;SDA_G=0;}
+			else if(LED_TAB1[G]==(LINE+16)){SDA_G_TOP=0;SDA_G=1;}
+			else SDA_G=SDA_G_TOP=1; 
+			SHCP=1;SHCP=0;
+		}
+		STCP=1;STCP=0;
+		P2=15-LINE;
+		if(LINE>0)LINE--;
+		else LINE=15;
+  //////////////////////////
+	
+   if(LED_TAB[COUNT]>0)LED_TAB[COUNT]--;		   //Öù×´µÝ¼õ£¬
+   COUNT++;
+   if(LED_TAB[COUNT]>0)LED_TAB[COUNT]--;
+   COUNT++;
+   if(LED_TAB[COUNT]>0)LED_TAB[COUNT]--;
+   COUNT++;
+   if(LED_TAB[COUNT]>0)LED_TAB[COUNT]--;
+   COUNT++;
+    if(LED_TAB[COUNT]>0)LED_TAB[COUNT]--;		   //Öù×´µÝ¼õ£¬
+   COUNT++;
+   if(LED_TAB[COUNT]>0)LED_TAB[COUNT]--;
+   COUNT++;
+   if(LED_TAB[COUNT]>0)LED_TAB[COUNT]--;
+   COUNT++;
+   if(LED_TAB[COUNT]>0)LED_TAB[COUNT]--;
+   COUNT++;
+   if(COUNT>=64)COUNT=0;
+
+   												   //Æ¯¸¡ÎïµÝ¼õ
+   if(LED_TAB2[COUNT1]==0)					//ÅÐ¶ÏÊÇ·ñÐèÒªÍ£¶Ù	   
+   {
+   		if(LED_TAB1[COUNT1]>LED_TAB[COUNT1])LED_TAB1[COUNT1]--;//´óÓÚÖù×´ÔòµÝ¼õ£¨±£³ÖÆ¯¸¡ÎïÔÚÖù×´Ö®ÉÏ£© 
+   }
+   else LED_TAB2[COUNT1]--;
+   COUNT1++;
+   if(LED_TAB2[COUNT1]==0)
+   {
+   		if(LED_TAB1[COUNT1]>LED_TAB[COUNT1])LED_TAB1[COUNT1]--; 
+   }
+   else LED_TAB2[COUNT1]--;
+   COUNT1++;
+   if(LED_TAB2[COUNT1]==0)					//ÅÐ¶ÏÊÇ·ñÐèÒªÍ£¶Ù	   
+   {
+   		if(LED_TAB1[COUNT1]>LED_TAB[COUNT1])LED_TAB1[COUNT1]--;//´óÓÚÖù×´ÔòµÝ¼õ£¨±£³ÖÆ¯¸¡ÎïÔÚÖù×´Ö®ÉÏ£© 
+   }
+   else LED_TAB2[COUNT1]--;
+   COUNT1++;
+   if(LED_TAB2[COUNT1]==0)
+   {
+   		if(LED_TAB1[COUNT1]>LED_TAB[COUNT1])LED_TAB1[COUNT1]--; 
+   }
+   else LED_TAB2[COUNT1]--;
+   COUNT1++;
+   if(COUNT1>=64)COUNT1=0;
+ }
+
+void Ad_Control() interrupt 1					 //¿ØÖÆ²ÉÑùÂÊ
+{
+ ADC_CONTR = ADC_POWER | ADC_SPEEDHH| ADC_START | channel;	 //¿ªÊ¼AD²É¼¯
+} 
+  //==============================================================================================================
+ //	*******************		   					main()							*********************************										  
+ //===============================================================================================================
+
+ void main()
+ {
+ 	Init();
+	while(1)
+	{		
+		ADC_Count=0;
+		TR0=1;
+		EADC=1;									   //¿ªÆô¶¨Ê±Æ÷ÖÐ¶Ï0£¬£¬¿ªÆôADC
+		while(ADC_Count<128);
+		FFT();
+	 //FFTÔËËã¡£²¢×ª»»Îª ¹¦ÂÊÖµ¡£¡£¡£						   
+		//	TR1=1;		 
+	}
+ }
